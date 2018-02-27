@@ -620,6 +620,7 @@ rc_socket_type rc_get_socket_type(rc_handle * rh);
 
 /* dict.c */
 
+int rc_read_dictionary_line (rc_handle *rh, char const *line, int line_no, const char *filename);
 int rc_read_dictionary (rc_handle *rh, char const *filename);
 DICT_ATTR *rc_dict_getattr(rc_handle const *rh, int attribute);
 DICT_ATTR *rc_dict_findattr(rc_handle const *rh, char const *attrname);
