@@ -500,10 +500,70 @@ static int set_addr(struct sockaddr_storage *ss, const char *ip)
 	return 0;
 }
 
-static int apply_config(rc_handle *rh)
+
+/** Tests the configuration the user supplied
+ *
+ * @param rh a handle to parsed configuration.
+ * @param filename a name of a configuration file.
+ * @return 0 on success, -1 when failure.
+ */
+static int rc_test_config(rc_handle *rh)
+{
+	SERVER *srv;
+
+	srv = rc_conf_srv(rh, "authserver");
+	if (!srv || !srv->max)
+	{
+		rc_log(LOG_ERR,"%s: no authserver specified", rh->name);
+		return -1;
+	}
+
+	srv = rc_conf_srv(rh, "acctserver");
+	if (!srv || !srv->max)
+	{
+		/* it is allowed not to have acct servers */
+		if (rh->so_type != RC_SOCKET_TLS && rh->so_type != RC_SOCKET_DTLS)
+			rc_log(LOG_DEBUG,"%s: no acctserver specified", rh->name);
+	}
+
+	/* no dicitionary file set and no entries load */
+	if (!rc_conf_str(rh, "dictionary") && !rh->dictionary_attributes)
+	{
+		rc_log(LOG_ERR,"%s: no dictionary specified", rh->name);
+		return -1;
+	}
+
+	if (rc_conf_int(rh, "radius_timeout") <= 0)
+	{
+		rc_log(LOG_ERR,"%s: radius_timeout <= 0 is illegal", rh->name);
+		return -1;
+	}
+	if (rc_conf_int(rh, "radius_retries") <= 0)
+	{
+		rc_log(LOG_ERR,"%s: radius_retries <= 0 is illegal", rh->name);
+		return -1;
+	}
+
+	return 0;
+}
+
+int rc_config_load(rc_handle *rh)
 {
 	const char *txt;
+	char *p;
 	int ret;
+
+	if (rc_test_config(rh) == -1) {
+		return -1;
+	}
+
+	p = rc_conf_str(rh, "dictionary");
+	if (p != NULL) {
+		if (rc_read_dictionary(rh, p) != 0) {
+			rc_log(LOG_CRIT, "could not load dictionary");
+			return -1;
+		}
+	}
 
 	memset(&rh->own_bind_addr, 0, sizeof(rh->own_bind_addr));
 	rh->own_bind_addr_set = 0;
@@ -551,7 +611,6 @@ static int apply_config(rc_handle *rh)
 	}
 
 	return 0;
-
 }
 
 /** Read the global config file
@@ -577,21 +636,20 @@ rc_handle *rc_read_config(char const *filename)
 	size_t pos;
 	rc_handle *rh;
 
-
 	rh = rc_new();
 	if (rh == NULL)
 		return NULL;
 
-        rh->config_options = malloc(sizeof(config_options_default));
-        if (rh->config_options == NULL) {
-                rc_log(LOG_CRIT, "rc_read_config: out of memory");
+	rh->name = strdup(filename);
+	rh->config_options = malloc(sizeof(config_options_default));
+	if (rh->config_options == NULL) {
+		rc_log(LOG_CRIT, "rc_read_config: out of memory");
 		rc_destroy(rh);
-                return NULL;
-        }
-        memcpy(rh->config_options, &config_options_default, sizeof(config_options_default));
+		return NULL;
+	}
+	memcpy(rh->config_options, &config_options_default, sizeof(config_options_default));
 
-	if ((configfd = fopen(filename,"r")) == NULL)
-	{
+	if ((configfd = fopen(filename, "r")) == NULL) {
 		rc_log(LOG_ERR,"rc_read_config: can't open %s: %s", filename, strerror(errno));
 		rc_destroy(rh);
 		return NULL;
@@ -676,27 +734,16 @@ rc_handle *rc_read_config(char const *filename)
 	}
 	fclose(configfd);
 
-	if (rc_test_config(rh, filename) == -1) {
+	if (rc_config_load(rh) == -1) {
 		rc_destroy(rh);
 		return NULL;
 	}
 
-        {
-                int clientdebug = rc_conf_int_2(rh, "clientdebug", FALSE);
-                if(clientdebug > 0) {
-                        radcli_debug = clientdebug;
-                }
-        }
-
-	p = rc_conf_str(rh, "dictionary");
-	if (p != NULL) {
-		if (rc_read_dictionary(rh, p) != 0) {
-			rc_log(LOG_CRIT, "could not load dictionary");
-			rc_destroy(rh);
-			return NULL;
+	{
+		int clientdebug = rc_conf_int_2(rh, "clientdebug", FALSE);
+		if(clientdebug > 0) {
+			radcli_debug = clientdebug;
 		}
-	} else {
-		rc_log(LOG_INFO, "rc_read_config: no dictionary was specified");
 	}
 
 	return rh;
@@ -770,54 +817,6 @@ SERVER *rc_conf_srv(rc_handle const *rh, char const *optname)
 		rc_log(LOG_CRIT, "rc_conf_srv: unkown config option requested: %s", optname);
 		return NULL;
 	}
-}
-
-/** Tests the configuration the user supplied
- *
- * @param rh a handle to parsed configuration.
- * @param filename a name of a configuration file.
- * @return 0 on success, -1 when failure.
- */
-int rc_test_config(rc_handle *rh, char const *filename)
-{
-	SERVER *srv;
-
-	srv = rc_conf_srv(rh, "authserver");
-	if (!srv || !srv->max)
-	{
-		rc_log(LOG_ERR,"%s: no authserver specified", filename);
-		return -1;
-	}
-
-	srv = rc_conf_srv(rh, "acctserver");
-	if (!srv || !srv->max)
-	{
-		/* it is allowed not to have acct servers */
-		if (rh->so_type != RC_SOCKET_TLS && rh->so_type != RC_SOCKET_DTLS)
-			rc_log(LOG_DEBUG,"%s: no acctserver specified", filename);
-	}
-	if (!rc_conf_str(rh, "dictionary"))
-	{
-		rc_log(LOG_ERR,"%s: no dictionary specified", filename);
-		return -1;
-	}
-
-	if (rc_conf_int(rh, "radius_timeout") <= 0)
-	{
-		rc_log(LOG_ERR,"%s: radius_timeout <= 0 is illegal", filename);
-		return -1;
-	}
-	if (rc_conf_int(rh, "radius_retries") <= 0)
-	{
-		rc_log(LOG_ERR,"%s: radius_retries <= 0 is illegal", filename);
-		return -1;
-	}
-
-	if (apply_config(rh) == -1) {
-		return -1;
-	}
-
-	return 0;
 }
 
 /** See if info matches hostname
@@ -1082,6 +1081,7 @@ void rc_config_free(rc_handle *rh)
 			free(rh->config_options[i].val);
 		}
 	}
+	free(rh->name);
 	free(rh->config_options);
 	free(rh->first_dict_read);
 	rh->config_options = NULL;

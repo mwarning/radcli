@@ -204,6 +204,7 @@ struct rc_conf
 
 	rc_sockets_override	so;
 	unsigned		so_type; /* rc_socket_type */
+	char		*name; /* config indentifier */
 };
 
 /* older compilers don't like seeing this typedef along with the one in radcli.h */

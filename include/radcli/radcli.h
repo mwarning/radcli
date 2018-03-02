@@ -608,7 +608,7 @@ rc_handle *rc_read_config(char const *filename);
 char *rc_conf_str(rc_handle const *rh, char const *optname);
 int rc_conf_int(rc_handle const *rh, char const *optname);
 SERVER *rc_conf_srv(rc_handle const *rh, char const *optname);
-int rc_test_config(rc_handle *rh, char const *filename);
+int rc_config_load(rc_handle *rh);
 int rc_find_server_addr (rc_handle const *rh, char const *server_name,
                          struct addrinfo** info, char *secret, rc_type type);
 void rc_config_free(rc_handle *rh);
